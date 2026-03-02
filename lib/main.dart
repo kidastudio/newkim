@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:rive/rive.dart';
 
 void main() {
@@ -29,16 +30,23 @@ class RivePreviewPage extends StatefulWidget {
   State<RivePreviewPage> createState() => _RivePreviewPageState();
 }
 
-class _RivePreviewPageState extends State<RivePreviewPage> {
+class _RivePreviewPageState extends State<RivePreviewPage>
+    with SingleTickerProviderStateMixin {
+  late Ticker _ticker;
   // Data Binding (New Rive API)
   ViewModelInstanceTrigger? _talkingTrigger;
   ViewModelInstanceTrigger? _listeningTrigger;
   ViewModelInstanceTrigger? _resetTrigger;
   ViewModelInstanceTrigger? _thinkingTrigger;
   ViewModelInstanceNumber? _voiceLevelInput;
+  ViewModelInstanceString? _smallOrbsClickInput;
+
+  // Track active artboard
+  String _activeArtboard = 'AllOrbs';
 
   // Track the current value for the voice level slider
   double _currentVoiceLevel = 0.0;
+  String _smallOrbsClickValue = '';
 
   // Store FileLoader to avoid recreation on every build
   late final FileLoader _fileLoader;
@@ -47,13 +55,22 @@ class _RivePreviewPageState extends State<RivePreviewPage> {
   void initState() {
     super.initState();
     _fileLoader = FileLoader.fromAsset(
-      'assets/kim_orb.riv',
+      'assets/kim_orb2.riv',
       riveFactory: Factory.rive,
     );
+    _ticker = createTicker((elapsed) {
+      if (_smallOrbsClickInput != null &&
+          _smallOrbsClickValue != _smallOrbsClickInput!.value) {
+        setState(() {
+          _smallOrbsClickValue = _smallOrbsClickInput!.value;
+        });
+      }
+    })..start();
   }
 
   @override
   void dispose() {
+    _ticker.dispose();
     _fileLoader.dispose();
     super.dispose();
   }
@@ -68,10 +85,14 @@ class _RivePreviewPageState extends State<RivePreviewPage> {
       _resetTrigger = vmi.trigger('reset');
       _thinkingTrigger = vmi.trigger('thinking');
       _voiceLevelInput = vmi.number('voiceLevel');
+      _smallOrbsClickInput = vmi.string('smallOrbsClick');
 
-      // Initialize voice level from the binding
+      // Initialize values from the binding
       if (_voiceLevelInput != null) {
         _currentVoiceLevel = _voiceLevelInput!.value;
+      }
+      if (_smallOrbsClickInput != null) {
+        _smallOrbsClickValue = _smallOrbsClickInput!.value;
       }
     }
 
@@ -87,10 +108,26 @@ class _RivePreviewPageState extends State<RivePreviewPage> {
       appBar: AppBar(title: const Text('Kim Orb Preview')),
       body: Column(
         children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'AllOrbs', label: Text('All Orbs')),
+                ButtonSegment(value: 'MainOrb', label: Text('Main Orb')),
+              ],
+              selected: {_activeArtboard},
+              onSelectionChanged: (Set<String> newSelection) {
+                setState(() {
+                  _activeArtboard = newSelection.first;
+                });
+              },
+            ),
+          ),
           Expanded(
             child: RiveWidgetBuilder(
+              key: ValueKey(_activeArtboard),
               fileLoader: _fileLoader,
-              artboardSelector: const ArtboardNamed('Main Artboard'),
+              artboardSelector: ArtboardNamed(_activeArtboard),
               stateMachineSelector: const StateMachineNamed('State Machine 1'),
               dataBind: const AutoBind(), // Enable Data Binding
               onLoaded: _onRiveLoaded,
@@ -143,6 +180,32 @@ class _RivePreviewPageState extends State<RivePreviewPage> {
                       _buildTriggerButton("Talking", _talkingTrigger),
                       _buildTriggerButton("Reset", _resetTrigger),
                     ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Small Orbs Click (Read-only)",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 5),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: Text(
+                      _smallOrbsClickValue.isEmpty
+                          ? "No click data"
+                          : _smallOrbsClickValue,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        color: Colors.greenAccent,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 20),
                   const Text(
